@@ -5,7 +5,7 @@ model:
   base_learning_rate: 1.0e-04
   target: ldm.models.diffusion.ddpm_edit.LatentDiffusion
   params:
-    ckpt_path: stable_diffusion/models/ldm/stable-diffusion-v1/v1-5-pruned-emaonly.ckpt
+    ckpt_path: /media/george/Projects/Research/Berkeley/backup/checkpoints/instruct-pix2pix-00-22000.ckpt
     linear_start: 0.00085
     linear_end: 0.0120
     num_timesteps_cond: 1
@@ -82,7 +82,7 @@ data:
     train:
       target: edit_dataset.EditDataset
       params:
-        path: data/clip-filtered-dataset
+        path: /media/george/Projects/Research/Berkeley/backup/instructpix2pix_dataset
         split: train
         min_resize_res: 256
         max_resize_res: 256
@@ -91,7 +91,7 @@ data:
     validation:
       target: edit_dataset.EditDataset
       params:
-        path: data/clip-filtered-dataset
+        path: /media/george/Projects/Research/Berkeley/backup/instructpix2pix_dataset
         split: val
         min_resize_res: 256
         max_resize_res: 256

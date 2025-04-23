@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 from pathlib import Path
 from typing import Any
 
@@ -26,45 +27,75 @@ class EditDataset(Dataset):
     ):
         assert split in ("train", "val", "test")
         assert sum(splits) == 1
-        self.path = path
+        
+        # Convert path to absolute path and validate
+        self.path = os.path.abspath(path)
+        if not os.path.exists(self.path):
+            raise FileNotFoundError(f"Dataset directory not found: {self.path}")
+            
         self.min_resize_res = min_resize_res
         self.max_resize_res = max_resize_res
         self.crop_res = crop_res
         self.flip_prob = flip_prob
 
-        with open(Path(self.path, "seeds.json")) as f:
-            self.seeds = json.load(f)
+        # Get all demo directories
+        try:
+            demo_dirs = [d for d in os.listdir(self.path) if d.startswith("demo_")]
+            if not demo_dirs:
+                raise ValueError(f"No demo directories found in {self.path}")
+                
+            demo_dirs.sort(key=lambda x: int(x.split("_")[1]))
+            
+            # Get all samples
+            self.samples = []
+            for demo_dir in demo_dirs:
+                demo_path = os.path.join(self.path, demo_dir)
+                sample_dirs = [d for d in os.listdir(demo_path) if d.startswith("sample_")]
+                for sample_dir in sample_dirs:
+                    sample_path = os.path.join(demo_path, sample_dir)
+                    self.samples.append(sample_path)
+                    
+            if not self.samples:
+                raise ValueError(f"No samples found in any demo directory in {self.path}")
+                
+        except Exception as e:
+            raise RuntimeError(f"Error loading dataset from {self.path}: {str(e)}")
 
+        # Split the samples
         split_0, split_1 = {
             "train": (0.0, splits[0]),
             "val": (splits[0], splits[0] + splits[1]),
             "test": (splits[0] + splits[1], 1.0),
         }[split]
 
-        idx_0 = math.floor(split_0 * len(self.seeds))
-        idx_1 = math.floor(split_1 * len(self.seeds))
-        self.seeds = self.seeds[idx_0:idx_1]
+        idx_0 = math.floor(split_0 * len(self.samples))
+        idx_1 = math.floor(split_1 * len(self.samples))
+        self.samples = self.samples[idx_0:idx_1]
 
     def __len__(self) -> int:
-        return len(self.seeds)
+        return len(self.samples)
 
     def __getitem__(self, i: int) -> dict[str, Any]:
-        name, seeds = self.seeds[i]
-        propt_dir = Path(self.path, name)
-        seed = seeds[torch.randint(0, len(seeds), ()).item()]
-        with open(propt_dir.joinpath("prompt.json")) as fp:
+        sample_path = self.samples[i]
+        
+        # Load prompt
+        with open(os.path.join(sample_path, "prompt.json")) as fp:
             prompt = json.load(fp)["edit"]
 
-        image_0 = Image.open(propt_dir.joinpath(f"{seed}_0.jpg"))
-        image_1 = Image.open(propt_dir.joinpath(f"{seed}_1.jpg"))
+        # Load images
+        image_0 = Image.open(os.path.join(sample_path, "1_0.jpg"))
+        image_1 = Image.open(os.path.join(sample_path, "1_1.jpg"))
 
+        # Resize images
         reize_res = torch.randint(self.min_resize_res, self.max_resize_res + 1, ()).item()
         image_0 = image_0.resize((reize_res, reize_res), Image.Resampling.LANCZOS)
         image_1 = image_1.resize((reize_res, reize_res), Image.Resampling.LANCZOS)
 
+        # Convert to tensor and normalize
         image_0 = rearrange(2 * torch.tensor(np.array(image_0)).float() / 255 - 1, "h w c -> c h w")
         image_1 = rearrange(2 * torch.tensor(np.array(image_1)).float() / 255 - 1, "h w c -> c h w")
 
+        # Apply random crop and flip
         crop = torchvision.transforms.RandomCrop(self.crop_res)
         flip = torchvision.transforms.RandomHorizontalFlip(float(self.flip_prob))
         image_0, image_1 = flip(crop(torch.cat((image_0, image_1)))).chunk(2)
@@ -82,40 +113,66 @@ class EditDatasetEval(Dataset):
     ):
         assert split in ("train", "val", "test")
         assert sum(splits) == 1
-        self.path = path
+        
+        # Convert path to absolute path and validate
+        self.path = os.path.abspath(path)
+        if not os.path.exists(self.path):
+            raise FileNotFoundError(f"Dataset directory not found: {self.path}")
+            
         self.res = res
 
-        with open(Path(self.path, "seeds.json")) as f:
-            self.seeds = json.load(f)
+        # Get all demo directories
+        try:
+            demo_dirs = [d for d in os.listdir(self.path) if d.startswith("demo_")]
+            if not demo_dirs:
+                raise ValueError(f"No demo directories found in {self.path}")
+                
+            demo_dirs.sort(key=lambda x: int(x.split("_")[1]))
+            
+            # Get all samples
+            self.samples = []
+            for demo_dir in demo_dirs:
+                demo_path = os.path.join(self.path, demo_dir)
+                sample_dirs = [d for d in os.listdir(demo_path) if d.startswith("sample_")]
+                for sample_dir in sample_dirs:
+                    sample_path = os.path.join(demo_path, sample_dir)
+                    self.samples.append(sample_path)
+                    
+            if not self.samples:
+                raise ValueError(f"No samples found in any demo directory in {self.path}")
+                
+        except Exception as e:
+            raise RuntimeError(f"Error loading dataset from {self.path}: {str(e)}")
 
+        # Split the samples
         split_0, split_1 = {
             "train": (0.0, splits[0]),
             "val": (splits[0], splits[0] + splits[1]),
             "test": (splits[0] + splits[1], 1.0),
         }[split]
 
-        idx_0 = math.floor(split_0 * len(self.seeds))
-        idx_1 = math.floor(split_1 * len(self.seeds))
-        self.seeds = self.seeds[idx_0:idx_1]
+        idx_0 = math.floor(split_0 * len(self.samples))
+        idx_1 = math.floor(split_1 * len(self.samples))
+        self.samples = self.samples[idx_0:idx_1]
 
     def __len__(self) -> int:
-        return len(self.seeds)
+        return len(self.samples)
 
     def __getitem__(self, i: int) -> dict[str, Any]:
-        name, seeds = self.seeds[i]
-        propt_dir = Path(self.path, name)
-        seed = seeds[torch.randint(0, len(seeds), ()).item()]
-        with open(propt_dir.joinpath("prompt.json")) as fp:
-            prompt = json.load(fp)
-            edit = prompt["edit"]
-            input_prompt = prompt["input"]
-            output_prompt = prompt["output"]
+        sample_path = self.samples[i]
+        
+        # Load prompt
+        with open(os.path.join(sample_path, "prompt.json")) as fp:
+            prompt = json.load(fp)["edit"]
 
-        image_0 = Image.open(propt_dir.joinpath(f"{seed}_0.jpg"))
+        # Load input image
+        image_0 = Image.open(os.path.join(sample_path, "1_0.jpg"))
 
+        # Resize image
         reize_res = torch.randint(self.res, self.res + 1, ()).item()
         image_0 = image_0.resize((reize_res, reize_res), Image.Resampling.LANCZOS)
 
+        # Convert to tensor and normalize
         image_0 = rearrange(2 * torch.tensor(np.array(image_0)).float() / 255 - 1, "h w c -> c h w")
 
-        return dict(image_0=image_0, input_prompt=input_prompt, edit=edit, output_prompt=output_prompt)
+        return dict(image_0=image_0, edit=prompt)
